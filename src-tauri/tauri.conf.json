@@ -1,0 +1,90 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PHANTOM",
+  "version": "0.1.0",
+  "identifier": "dev.phantom.companion",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob: asset: http://asset.localhost; media-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost blob: data:; font-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Utility",
+    "shortDescription": "A horror-themed desktop AI companion",
+    "longDescription": "PHANTOM brings Noli, a small pixel creature, to your desktop. Talk to him by voice or text through Claude Code, OpenRouter or Groq; he can look at your screen and help with apps when you allow it. Speech recognition runs locally.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "entitlements": "entitlements.plist",
+      "infoPlist": "Info.plist",
+      "dmg": {
+        "windowSize": {
+          "width": 560,
+          "height": 340
+        },
+        "appPosition": {
+          "x": 150,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 410,
+          "y": 170
+        }
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libasound2t64 | libasound2",
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ],
+        "recommends": [
+          "espeak-ng",
+          "wmctrl",
+          "gnome-screenshot | grim | scrot"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "alsa-lib",
+          "webkit2gtk4.1",
+          "gtk3"
+        ]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    },
+    "copyright": "PHANTOM contributors",
+    "publisher": "PHANTOM"
+  }
+}

@@ -1,0 +1,338 @@
+/* The companion window is fully transparent: only the creature and its bubble render. */
+html.companion-root,
+html.companion-root body,
+html.companion-root #root {
+  background: transparent !important;
+}
+
+.companion {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.sprite {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  cursor: grab;
+  flex: none;
+}
+.sprite:active {
+  cursor: grabbing;
+}
+
+.bubble-zone {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 4px 8px 0;
+  min-height: 0;
+  pointer-events: none;
+}
+
+.bubble {
+  pointer-events: auto;
+  position: relative;
+  max-width: 100%;
+  background: #15101f;
+  border: 2px solid #765a9d;
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #f0e8fa;
+  box-shadow: 0 0 0 1px #09070e, 3px 3px 0 0 rgba(9, 7, 14, 0.85);
+  animation: bubble-in 0.14s steps(3);
+  margin-bottom: 2px;
+}
+.bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  margin-left: -4px;
+  width: 8px;
+  height: 8px;
+  background: #15101f;
+  border-right: 2px solid #765a9d;
+  border-bottom: 2px solid #765a9d;
+  transform: rotate(45deg) translate(-2px, -2px);
+}
+.bubble-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.bubble-transcript .bubble-text,
+.bubble-status .bubble-text {
+  color: #d4b5ff;
+  font-style: italic;
+}
+.bubble-error {
+  border-color: #e84b65;
+}
+.bubble-error::after {
+  border-color: #e84b65;
+}
+.bubble-error .bubble-text {
+  color: #ffc4cf;
+}
+.bubble-remark {
+  border-style: dashed;
+}
+.bubble-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.bubble-actions button {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid #a879ff;
+  background: #a879ff;
+  color: #12091f;
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.bubble-actions button.ghost {
+  background: transparent;
+  color: #d4b5ff;
+  border-color: #765a9d;
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* ---------- chat button + chatbox ---------- */
+.stage {
+  position: relative;
+  flex: none;
+}
+.chat-button {
+  position: absolute;
+  top: 2%;
+  right: 4%;
+  padding: 2px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  opacity: 0.72;
+  transition: opacity 0.12s, transform 0.12s;
+}
+.chat-button:hover,
+.chat-button.on {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+.chatbox {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 16px);
+  margin: 4px 8px 6px;
+  padding: 6px 6px 6px 9px;
+  background: #0d0a14;
+  border: 2px solid #765a9d;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #09070e, 3px 3px 0 rgba(9, 7, 14, 0.85);
+  font-family: var(--mono);
+}
+.chatbox:focus-within {
+  border-color: #a879ff;
+}
+.chatbox-glyph {
+  color: #d4b5ff;
+  text-shadow: 0 0 6px rgba(168, 121, 255, 0.5);
+  font-weight: 700;
+  line-height: 18px;
+  align-self: flex-start;
+  padding-top: 2px;
+}
+.chatbox textarea {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  height: 18px;
+  min-height: 18px;
+  resize: none;
+  overflow-y: auto;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: #f0e8fa;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 18px;
+  padding: 0;
+  margin: 2px 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.chatbox textarea::placeholder {
+  color: rgba(240, 232, 250, 0.38);
+}
+.chatbox-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  width: 24px;
+  height: 22px;
+  border: 1px solid #a879ff;
+  background: #a879ff;
+  color: #12091f;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+.chatbox-btn:disabled {
+  background: transparent;
+  color: rgba(240, 232, 250, 0.38);
+  border-color: #44325f;
+  cursor: default;
+}
+.chatbox-btn.stop {
+  background: transparent;
+  color: #e84b65;
+  border-color: #e84b65;
+}
+.chatbox-btn.ghost {
+  background: transparent;
+  color: rgba(240, 232, 250, 0.5);
+  border-color: transparent;
+}
+.chatbox-btn.ghost:hover {
+  color: #d4b5ff;
+}
+
+/* full reply above the chatbox */
+.bubble-reply {
+  width: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.chat-open .bubble-zone {
+  padding: 6px 8px 0;
+}
+.chat-open .bubble::after {
+  display: none;
+}
+.reply-text {
+  overflow-y: auto;
+  max-height: 230px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.reply-dots {
+  color: #d4b5ff;
+  font-style: italic;
+  animation: reply-flick 1s steps(2) infinite;
+}
+.reply-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 11px;
+  background: #d4b5ff;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: reply-flick 1s steps(2) infinite;
+}
+@keyframes reply-flick {
+  50% {
+    opacity: 0.3;
+  }
+}
+.reply-note,
+.reply-tool {
+  color: rgba(240, 232, 250, 0.45);
+}
+.reply-tool {
+  margin-top: 4px;
+  font-size: 10.5px;
+}
+.reply-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  color: #ffc4cf;
+}
+.reply-error button {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  border: 1px solid #e84b65;
+  background: transparent;
+  color: #e84b65;
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+/* agent permission request */
+.bubble-permission {
+  width: 100%;
+  border-color: #e84b65;
+}
+.perm-head {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: #ffc4cf;
+}
+.perm-head b {
+  color: #f0e8fa;
+}
+.perm-more {
+  color: rgba(240, 232, 250, 0.45);
+}
+.perm-what {
+  margin-top: 5px;
+  padding: 4px 6px;
+  background: #09070e;
+  border: 1px solid #44325f;
+  color: #d4b5ff;
+  overflow-wrap: anywhere;
+  max-height: 90px;
+  overflow-y: auto;
+}
+.perm-where {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: rgba(240, 232, 250, 0.45);
+  overflow-wrap: anywhere;
+}
+.bubble-actions button.danger {
+  color: #e84b65;
+  border-color: #e84b65;
+}
+
+.chatbox-btn.screen-glance {
+  background: transparent;
+  color: #d4b5ff;
+  border-color: #44325f;
+}
+.chatbox-btn.screen-glance:hover:not(:disabled) {
+  border-color: #a879ff;
+  color: #f0e8fa;
+}

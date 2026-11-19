@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>PHANTOM listens through your microphone only while you hold push-to-talk or enable continuous listening. Audio is transcribed locally and never uploaded.</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Noli asks System Events which app and window are in front, so he knows what you are looking at when you ask for help.</string>
+  <key>LSUIElement</key>
+  <false/>
+</dict>
+</plist>
