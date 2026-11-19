@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Field, Section, Toggle } from '../../components/ui';
-import { api } from '../../lib/ipc';
+import { Field, Section, Status, Toggle } from '../../components/ui';
+import { api, errorText } from '../../lib/ipc';
 import type { Settings } from '../../lib/types';
 
 type Props = { s: Settings; update: (m: (d: Settings) => void) => Promise<string[]> };
@@ -54,12 +54,18 @@ export function ComputerSection({ s, update }: Props) {
       </Section>
 
       <Section title="macOS permissions">
-        <Field label="Screen Recording" hint="Lets Noli see other apps' windows. Without it, screenshots only show the wallpaper." inline>
-          <PermissionState ok={perms?.screen} onFix={() => void api.computerOpenPermission('screen')} />
+        <Field label="Screen Recording" hint="Lets Noli see other apps' windows." inline>
+          <PermissionState ok={perms?.screen} which="screen" onDone={check} />
         </Field>
         <Field label="Accessibility" hint="Lets Noli move the mouse, click and type." inline>
-          <PermissionState ok={perms?.input} onFix={() => void api.computerOpenPermission('accessibility')} />
+          <PermissionState ok={perms?.input} which="accessibility" onDone={check} />
         </Field>
+        {perms && (!perms.screen || !perms.input) && (
+          <div className="notice section-note">
+            <b>PHANTOM is switched on in System Settings but this still says “not allowed”?</b> After an update, macOS keeps the switch for the old version of the
+            app. Click <b>Repair</b>: it removes the old entry and asks again, then switch PHANTOM on once more.
+          </div>
+        )}
         <p className="faint small-text section-note">
           “Allow…” adds PHANTOM to the list in System Settings; switch it on there and this page updates within a few seconds. If PHANTOM isn't listed, click <b>+</b> under the list and pick PHANTOM from Applications.
         </p>
@@ -76,13 +82,19 @@ export function ComputerSection({ s, update }: Props) {
   );
 }
 
-function PermissionState({ ok, onFix }: { ok: boolean | undefined; onFix: () => void }) {
+function PermissionState({ ok, which, onDone }: { ok: boolean | undefined; which: 'screen' | 'accessibility'; onDone: () => void }) {
+  const [err, setErr] = useState<string | null>(null);
   if (ok === undefined) return <span className="spinner" />;
-  return ok ? (
-    <span className="label-pill ok">allowed</span>
-  ) : (
-    <button className="btn small" onClick={onFix}>
-      Allow…
-    </button>
+  if (ok) return <Status tone="ok">allowed</Status>;
+  return (
+    <div className="row">
+      {err && <span className="small-text" style={{ color: 'var(--red)' }} title={err}>repair failed</span>}
+      <button className="btn ghost small" onClick={() => void api.computerRepairPermission(which).then(() => (setErr(null), onDone()), (e) => setErr(errorText(e)))}>
+        Repair
+      </button>
+      <button className="btn small primary" onClick={() => void api.computerOpenPermission(which).then(onDone)}>
+        Allow…
+      </button>
+    </div>
   );
 }

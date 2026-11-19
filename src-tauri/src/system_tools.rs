@@ -173,6 +173,29 @@ pub fn open_permission_settings(which: &str) {
     let _ = which;
 }
 
+/// Clears PHANTOM's entries in a macOS privacy list and asks again.
+///
+/// Builds that aren't signed with an Apple Developer ID are identified by their
+/// exact binary, so after an update the old (switched-on) entry no longer
+/// applies. Resetting removes the stale entry; the new request re-adds it.
+pub fn repair_permission(which: &str, bundle_id: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let service = if which == "screen" { "ScreenCapture" } else { "Accessibility" };
+        let out = Command::new("/usr/bin/tccutil").args(["reset", service, bundle_id]).output().context("tccutil is not available")?;
+        if !out.status.success() {
+            return Err(anyhow!("macOS refused to reset the permission: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        }
+        open_permission_settings(which);
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (which, bundle_id);
+        Ok(())
+    }
+}
+
 // ---- apps & URLs ----------------------------------------------------------------
 
 pub fn open_app(app_name: &str) -> Result<String> {
@@ -279,7 +302,7 @@ pub fn screenshot(logical: (f64, f64, f64, f64), tmp_dir: &std::path::Path) -> R
     if !perms.screen {
         open_permission_settings("screen");
         return Err(anyhow!(
-            "Screen Recording is switched off for PHANTOM. Switch PHANTOM on in System Settings → Privacy & Security → Screen & System Audio Recording, then ask again."
+            "Screen Recording is not allowed for this version of PHANTOM. Switch PHANTOM on in System Settings → Privacy & Security → Screen & System Audio Recording. If it already looks switched on, open PHANTOM Settings → Computer Control and click Repair."
         ));
     }
     std::fs::create_dir_all(tmp_dir)?;

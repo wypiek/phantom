@@ -28,6 +28,7 @@ export function stripForSpeech(raw: string, partial = false): string {
     .replace(/[ \t]*(?<!\*)\*(?!\*)[^*\n]{1,60}\*(?!\*)/g, '')
     .replace(/^\s*\([^)\n]{1,40}\)\s*$/gm, '')
     .replace(/<action[\s\S]*?(\/>|<\/action>)/g, '')
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '')
     .replace(/<remember>[\s\S]*?<\/remember>/g, '')
     .replace(/```[\s\S]*?```/g, CODE_PLACEHOLDER)
     .replace(/`([^`\n]+)`/g, '$1')

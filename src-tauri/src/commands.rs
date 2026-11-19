@@ -427,6 +427,12 @@ pub fn computer_permissions() -> crate::system_tools::ControlPermissions {
     crate::system_tools::permissions()
 }
 
+/// Removes a stale macOS permission entry for PHANTOM and requests it again.
+#[tauri::command]
+pub fn computer_repair_permission(app: AppHandle, which: String) -> CmdResult<()> {
+    crate::system_tools::repair_permission(&which, &app.config().identifier).map_err(err)
+}
+
 /// Restarts PHANTOM (some macOS permissions only apply after a relaunch).
 #[tauri::command]
 pub fn app_restart(app: AppHandle) {

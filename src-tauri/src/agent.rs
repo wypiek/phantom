@@ -33,7 +33,9 @@ pub struct TagFilter {
     pending: String,
 }
 
-const TAGS: [(&str, &str); 2] = [("<action", "</action>"), ("<remember>", "</remember>")];
+const TAGS: [(&str, &str); 3] = [("<action", "</action>"), ("<remember>", "</remember>"), ("<tool_call>", "</tool_call>")];
+/// Closing tags some models emit on their own; never shown.
+const STRAY: [&str; 3] = ["</tool_call>", "</action>", "</remember>"];
 
 impl TagFilter {
     /// Feed a chunk; returns the text safe to show/speak now.
@@ -49,9 +51,13 @@ impl TagFilter {
             out.push_str(&self.pending[..lt]);
             self.pending.drain(..lt);
             let p = self.pending.as_str();
+            if let Some(stray) = STRAY.iter().find(|t| p.starts_with(**t)) {
+                self.pending.drain(..stray.len());
+                continue;
+            }
             // Could this still become one of our tags?
             let mut matched = None;
-            let mut maybe = false;
+            let mut maybe = STRAY.iter().any(|t| t.starts_with(p));
             for (open, close) in TAGS {
                 if p.starts_with(open) {
                     matched = Some((open, close));
@@ -91,7 +97,7 @@ impl TagFilter {
     /// End of stream: anything left is not a complete tag; drop unfinished tags.
     pub fn finish(&mut self) -> String {
         let p = std::mem::take(&mut self.pending);
-        if TAGS.iter().any(|(o, _)| p.starts_with(o) || o.starts_with(p.as_str())) {
+        if TAGS.iter().any(|(o, _)| p.starts_with(o) || o.starts_with(p.as_str())) || STRAY.iter().any(|t| t.starts_with(p.as_str())) {
             String::new()
         } else {
             p
@@ -130,19 +136,25 @@ pub fn parse_reply(text: &str) -> (String, Vec<String>, Vec<ActionCall>) {
     let mut actions = vec![];
     let mut rest = text;
     loop {
-        let a = rest.find("<action");
-        let m = rest.find("<remember>");
-        let next = match (a, m) {
-            (Some(a), Some(m)) => Some(a.min(m)),
-            (x, y) => x.or(y),
-        };
+        let next = [rest.find("<action"), rest.find("<remember>"), rest.find("<tool_call>")].into_iter().flatten().min();
         let Some(pos) = next else {
             clean.push_str(rest);
             break;
         };
         clean.push_str(&rest[..pos]);
         let after = &rest[pos..];
-        if after.starts_with("<remember>") {
+        if let Some(body) = after.strip_prefix("<tool_call>") {
+            // OpenAI/Qwen-style: <tool_call>{"name": "...", "arguments": {...}}</tool_call>
+            match body.find("</tool_call>") {
+                Some(e) => {
+                    if let Some(a) = tool_call_json(&body[..e]) {
+                        actions.push(a);
+                    }
+                    rest = &body[e + "</tool_call>".len()..];
+                }
+                None => break,
+            }
+        } else if after.starts_with("<remember>") {
             let body = &after["<remember>".len()..];
             match body.find("</remember>") {
                 Some(e) => {
@@ -175,7 +187,35 @@ pub fn parse_reply(text: &str) -> (String, Vec<String>, Vec<ActionCall>) {
             }
         }
     }
+    let mut clean = clean;
+    for t in STRAY {
+        clean = clean.replace(t, "");
+    }
     (clean.trim().to_string(), mems, actions)
+}
+
+/// Converts a JSON tool call into an action. Text-like arguments become the payload.
+fn tool_call_json(body: &str) -> Option<ActionCall> {
+    let v: serde_json::Value = serde_json::from_str(body.trim()).ok()?;
+    let name = v["name"].as_str()?.to_string();
+    let args = match &v["arguments"] {
+        serde_json::Value::String(s) => serde_json::from_str(s).unwrap_or(serde_json::Value::Null),
+        other => other.clone(),
+    };
+    let mut attrs = HashMap::new();
+    let mut payload = String::new();
+    if let Some(obj) = args.as_object() {
+        for (k, val) in obj {
+            let text = val.as_str().map(str::to_string).unwrap_or_else(|| val.to_string());
+            if payload.is_empty() && ["text", "command", "app", "name", "url", "keys", "key", "payload"].contains(&k.as_str()) {
+                payload = text;
+            } else {
+                attrs.insert(k.to_lowercase(), text);
+            }
+        }
+    }
+    attrs.insert("name".into(), name.clone());
+    Some(ActionCall { name, attrs, payload })
 }
 
 /// Instructions appended to the system prompt.
@@ -439,5 +479,19 @@ mod tests {
         assert!(needs_approval(ControlMode::Ask, "click"));
         assert!(!needs_approval(ControlMode::Trusted, "click"));
         assert!(needs_approval(ControlMode::Trusted, "run_command"));
+    }
+
+    #[test]
+    fn tool_call_tags_are_hidden_and_parsed() {
+        let mut f = TagFilter::default();
+        let shown = f.push("Let me look.\n<tool_") + &f.push("call>{\"name\": \"see_screen\", \"arguments\": {}}</tool_call> ok") + &f.finish();
+        assert_eq!(shown, "Let me look.\n ok");
+        let mut f = TagFilter::default();
+        assert_eq!(f.push("Done.</tool_call> Next") + &f.finish(), "Done. Next");
+        let (clean, _, acts) = parse_reply("Opening.<tool_call>{\"name\":\"open_app\",\"arguments\":{\"app\":\"Safari\"}}</tool_call>");
+        assert_eq!(clean, "Opening.");
+        assert_eq!((acts[0].name.as_str(), acts[0].payload.as_str()), ("open_app", "Safari"));
+        let (_, _, acts) = parse_reply("<tool_call>{\"name\":\"click\",\"arguments\":\"{\\\"x\\\": 10, \\\"y\\\": 20}\"}</tool_call>");
+        assert_eq!(acts[0].attrs.get("x").map(String::as_str), Some("10"));
     }
 }

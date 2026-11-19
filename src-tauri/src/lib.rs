@@ -185,6 +185,7 @@ pub fn run() {
             commands::computer_permissions,
             commands::computer_open_permission,
             commands::app_restart,
+            commands::computer_repair_permission,
             chat::chat_send,
             chat::chat_cancel,
             chat::chat_cancel_all,

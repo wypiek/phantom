@@ -27,6 +27,7 @@ describe('roleplay', () => {
     expect(stripForSpeech('*the screen dims, then flickers back*\n\nAh. Budget cuts.').trim()).toBe('Ah. Budget cuts.');
     expect(stripForSpeech('Hello *waves* there.')).toBe('Hello there.');
     expect(stripForSpeech('Fine. <action name="click" x="1" y="2" /> Done.')).toBe('Fine.  Done.');
+    expect(stripForSpeech('Look.<tool_call>{"name":"see_screen"}</tool_call> Hm.</tool_call>')).toBe('Look. Hm.');
   });
 });
 

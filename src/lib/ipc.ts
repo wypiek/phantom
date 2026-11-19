@@ -106,6 +106,7 @@ export const api = {
   // system tools
   computerPermissions: () => invoke<{ input: boolean; screen: boolean }>('computer_permissions'),
   computerOpenPermission: (which: 'screen' | 'accessibility') => invoke<void>('computer_open_permission', { which }),
+  computerRepairPermission: (which: 'screen' | 'accessibility') => invoke<void>('computer_repair_permission', { which }),
 };
 
 export function errorText(e: unknown): string {
