@@ -207,6 +207,9 @@ function HearingSection({ s, update }: Props) {
           </select>
           {devices.error && <div className="notice error">{devices.error}</div>}
         </Field>
+        <Field label="Accurate transcription" hint="Searches several possible transcriptions before deciding (beam search). Noticeably better with names and accents; about twice the work. Live previews stay fast." inline>
+          <Toggle checked={v.accurateTranscription} onChange={(x) => void update((d) => void (d.voice.accurateTranscription = x))} />
+        </Field>
         <Field label="Input gain" hint="Boost a quiet microphone or tame a hot one. Applied before speech detection.">
           <Slider value={v.inputGain} min={0.25} max={4} step={0.05} onChange={(x) => void update((d) => void (d.voice.inputGain = x))} format={(x) => `${x.toFixed(2)}×`} label="Input gain" />
           <MicTest />
@@ -243,6 +246,18 @@ function HearingSection({ s, update }: Props) {
         <Field label="Interrupt by speaking" hint="Talking over Noli stops his voice (continuous mode). Push-to-talk always interrupts." inline>
           <Toggle checked={v.interruptOnSpeech} onChange={(x) => void update((d) => void (d.voice.interruptOnSpeech = x))} />
         </Field>
+      </Section>
+
+      <Section title="Who is speaking">
+        <Field label="Recognise voices" hint="Noli learns your voice. When someone it doesn't recognise talks, it asks who they are and remembers them. Manage known voices in Privacy & Memory." inline>
+          <Toggle checked={v.speakerRecognition} onChange={(x) => void update((d) => void (d.voice.speakerRecognition = x))} />
+        </Field>
+        {v.speakerRecognition && (
+          <Field label="Strictness" hint="Higher asks “who's speaking?” more readily; lower assumes it's someone it knows. If Noli keeps asking you who you are, turn this down.">
+            <Slider value={v.speakerStrictness} min={0} max={1} step={0.05} onChange={(x) => void update((d) => void (d.voice.speakerStrictness = x))} format={(x) => `${Math.round(x * 100)}%`} label="Strictness" />
+          </Field>
+        )}
+        {v.speakerRecognition && !s.privacy.memoryEnabled && <div className="notice">Long-term memory is off, so Noli won't remember voices. Turn it on in Privacy & Memory.</div>}
       </Section>
     </>
   );

@@ -15,6 +15,8 @@ import type {
   PermissionRequest,
   PiperVoiceEntry,
   Settings,
+  Speaker,
+  Transcript,
   TtsStatus,
   VoiceInfo,
   WhisperModel,
@@ -37,8 +39,8 @@ export const api = {
   conversationExport: (id: string, format: 'markdown' | 'json', path: string) => invoke<void>('conversation_export', { id, format, path }),
 
   // chat
-  chatSend: (text: string, conversationId: string | null, source = 'text') =>
-    invoke<{ conversationId: string; userMessageId: string; assistantMessageId: string }>('chat_send', { text, conversationId, source }),
+  chatSend: (text: string, conversationId: string | null, source = 'text', speaker: string | null = null) =>
+    invoke<{ conversationId: string; userMessageId: string; assistantMessageId: string }>('chat_send', { text, conversationId, source, speaker }),
   chatCancel: (conversationId: string) => invoke<boolean>('chat_cancel', { conversationId }),
   chatCancelAll: () => invoke<void>('chat_cancel_all'),
   chatRegenerate: (conversationId: string) => invoke<{ conversationId: string; assistantMessageId: string }>('chat_regenerate', { conversationId }),
@@ -77,10 +79,18 @@ export const api = {
   voiceDownloadModel: (name: string) => invoke<void>('voice_download_model', { name }),
   voiceDeleteModel: (name: string) => invoke<void>('voice_delete_model', { name }),
   voiceStart: (mode?: ListenMode) => invoke<void>('voice_start', { mode: mode ?? null }),
-  voiceStop: () => invoke<{ text: string; auto: boolean }>('voice_stop'),
+  voiceStop: () => invoke<Transcript>('voice_stop'),
   voiceCancel: () => invoke<void>('voice_cancel'),
   voiceSetSpeaking: (speaking: boolean) => invoke<void>('voice_set_speaking', { speaking }),
   voiceStatus: () => invoke<{ listening: boolean; mode: ListenMode | null }>('voice_status'),
+
+  // known voices
+  speakers: () => invoke<Speaker[]>('speakers_list'),
+  speakerEnroll: (token: string, name: string, isOwner = false) => invoke<Speaker>('speaker_enroll', { token, name, isOwner }),
+  speakerRename: (id: string, name: string) => invoke<void>('speaker_rename', { id, name }),
+  speakerSetOwner: (id: string) => invoke<void>('speaker_set_owner', { id }),
+  speakerDelete: (id: string) => invoke<void>('speaker_delete', { id }),
+  speakersClear: () => invoke<void>('speakers_clear'),
 
   // tts
   ttsStatus: () => invoke<TtsStatus>('tts_status'),

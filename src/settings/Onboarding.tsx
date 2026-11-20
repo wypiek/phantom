@@ -1,3 +1,4 @@
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useState } from 'react';
 import { Toggle, useAsync } from '../components/ui';
 import { api } from '../lib/ipc';
@@ -16,13 +17,22 @@ export function Onboarding({ s, update, onDone }: Props) {
   const claude = useAsync(() => api.claudeStatus(), []);
   const key = useAsync(() => api.openrouterKeyStatus(), [step]);
   const models = useAsync(() => api.voiceModels(), [step]);
-  const providerReady = s.provider.active === 'claude-code' ? !!claude.data?.loggedIn : !!key.data?.configured;
+  const groqKey = useAsync(() => api.groqKeyStatus(), [step]);
+  const providerReady = s.provider.active === 'claude-code' ? !!claude.data?.loggedIn : s.provider.active === 'groq' ? !!groqKey.data?.configured : !!key.data?.configured;
+  const providerLabel = PROVIDERS.find((p) => p.id === s.provider.active)?.label ?? s.provider.active;
   const sttReady = !!models.data?.find((m) => m.name === s.voice.whisperModel)?.downloaded;
+  const [fetching, setFetching] = useState(false);
 
   const finish = async () => {
-    await update((d) => void (d.general.onboardingComplete = true));
+    const firstRun = !s.general.onboardingComplete;
+    // completing setup makes Noli arrive on the desktop and introduce itself
+    await update((d) => {
+      d.general.onboardingComplete = true;
+      d.general.characterVisible = true;
+    });
     onDone();
-    void api.openWindow('chat');
+    void api.openWindow('companion');
+    if (firstRun) void getCurrentWindow().close();
   };
 
   return (
@@ -50,6 +60,7 @@ export function Onboarding({ s, update, onDone }: Props) {
                 <Check ok={!!claude.data?.installed} label={claude.data?.installed ? `Claude Code found (${claude.data.version ?? 'unknown version'})` : 'Claude Code not found (optional — OpenRouter works too)'} loading={claude.loading} />
                 <Check ok={!!key.data?.configured} label={key.data?.configured ? 'OpenRouter key saved' : 'No OpenRouter key yet (optional)'} />
                 <Check ok={sttReady} label={sttReady ? 'Speech model ready' : 'Speech model not downloaded yet'} loading={models.loading} />
+                <Check ok={!!groqKey.data?.configured} label={groqKey.data?.configured ? 'Groq key saved' : 'No Groq key yet (optional, free tier)'} />
               </div>
             </div>
           </div>
@@ -80,11 +91,39 @@ export function Onboarding({ s, update, onDone }: Props) {
             </div>
             {s.voice.enabled && (
               <>
+                {!sttReady && !models.loading && (
+                  <div className="notice" style={{ marginBottom: 10 }}>
+                    <div className="grow">Noli needs a speech model to understand you. The recommended one ({s.voice.whisperModel}) is a one-time download.</div>
+                    <button
+                      className="btn primary small"
+                      disabled={fetching}
+                      onClick={() => {
+                        setFetching(true);
+                        api
+                          .voiceDownloadModel(s.voice.whisperModel)
+                          .catch(() => {})
+                          .finally(() => {
+                            setFetching(false);
+                            models.reload();
+                          });
+                      }}
+                    >
+                      {fetching ? 'Downloading…' : 'Download'}
+                    </button>
+                  </div>
+                )}
                 <WhisperModels s={s} update={update} />
                 <div style={{ marginTop: 14 }}>{sttReady ? <MicTest /> : <div className="faint">Download a model to test the microphone.</div>}</div>
                 <p className="dim small-text" style={{ marginTop: 14 }}>
                   Push to talk: hold <span className="kbd">{s.general.shortcuts.pushToTalk.replace('CommandOrControl', '⌘/Ctrl')}</span> anywhere, speak, release.
                 </p>
+                <div className="row" style={{ margin: '14px 0 4px' }}>
+                  <div className="grow">
+                    <div>Recognise who is speaking</div>
+                    <div className="faint small-text">Noli learns your voice. When someone it doesn't know talks, it asks who they are and remembers them. Voiceprints stay on this computer.</div>
+                  </div>
+                  <Toggle checked={s.voice.speakerRecognition} onChange={(v) => void update((d) => void (d.voice.speakerRecognition = v))} />
+                </div>
               </>
             )}
           </div>
@@ -111,7 +150,7 @@ export function Onboarding({ s, update, onDone }: Props) {
             <div>
               <h1 className="welcome-title">It is awake.</h1>
               <div className="checklist">
-                <Check ok={providerReady} label={providerReady ? `Brain: ${s.provider.active === 'claude-code' ? 'Claude Code' : 'OpenRouter'}` : 'The chosen brain is not configured yet'} />
+                <Check ok={providerReady} label={providerReady ? `Brain: ${providerLabel}` : `${providerLabel} is not configured yet`} />
                 <Check ok={sttReady || !s.voice.enabled} label={!s.voice.enabled ? 'Voice input off' : sttReady ? 'Ears: Whisper ready' : 'Speech model missing — voice input will not work yet'} />
                 <Check ok label={s.tts.enabled ? `Voice: ${s.tts.preset.toUpperCase()}` : 'Voice output off'} />
               </div>
@@ -119,6 +158,7 @@ export function Onboarding({ s, update, onDone }: Props) {
                 <span>Launch at startup</span>
                 <Toggle checked={s.general.launchAtStartup} onChange={(v) => void update((d) => void (d.general.launchAtStartup = v))} />
               </div>
+              <p className="dim">When you finish, Noli will fall onto your desktop and introduce itself. Tell it your name so it knows who you are.</p>
               <ul className="dim tips">
                 <li>Drag the creature anywhere. Double-click it to open the chat, right-click for options.</li>
                 <li>
@@ -147,7 +187,7 @@ export function Onboarding({ s, update, onDone }: Props) {
           </button>
         ) : (
           <button className="btn primary" onClick={() => void finish()}>
-            Open the chat
+            Wake Noli
           </button>
         )}
       </div>

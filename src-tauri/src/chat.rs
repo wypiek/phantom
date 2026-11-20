@@ -93,10 +93,24 @@ pub fn make_title(text: &str) -> String {
     }
 }
 
-pub fn build_system_prompt(settings: &Settings, memories: &[String]) -> String {
+pub fn build_system_prompt(settings: &Settings, memories: &[String], speaker: Option<&str>) -> String {
     let mut s = settings.personality.system_prompt.trim().to_string();
     let now = chrono::Local::now().format("%A, %B %-d %Y, %H:%M");
     s.push_str(&format!("\n\nContext: you speak through the Noli desktop companion, a small animated creature on the user's desktop. Local time: {now}. Reply in plain dialogue only — no roleplay narration, no actions in asterisks, no stage directions."));
+    let owner = settings.profile.user_name.trim();
+    if !owner.is_empty() {
+        s.push_str(&format!("\n\nThe main user of this computer is called {owner}. Use their name now and then, not in every reply."));
+    }
+    match speaker.map(str::trim).filter(|n| !n.is_empty()) {
+        Some(sp) if !sp.eq_ignore_ascii_case(owner) => {
+            let main = if owner.is_empty() { "the main user".to_string() } else { owner.to_string() };
+            s.push_str(&format!(
+                "\n\nOther people sometimes talk to you too; their messages start with their name in brackets, like [{sp}]. The latest message was spoken aloud by {sp}, whom you recognised by voice. {sp} is not {main}: talk to {sp} directly."
+            ));
+        }
+        Some(sp) => s.push_str(&format!("\n\nThe latest message was spoken aloud by {sp}, recognised by voice.")),
+        None => {}
+    }
     s.push_str(&crate::agent::tool_prompt(settings));
     if settings.privacy.memory_enabled {
         if !memories.is_empty() {
@@ -151,12 +165,22 @@ fn history_turns(messages: &[Message]) -> Vec<ChatTurn> {
         .collect()
 }
 
-async fn start_generation(app: AppHandle, conversation_id: Option<String>, text: String, source: Option<String>) -> anyhow::Result<SendResult> {
+/// Messages from someone other than the main user carry their name, so the
+/// model (and the history) keeps track of who said what.
+fn attribute(text: &str, speaker: Option<&str>, owner: &str) -> String {
+    match speaker.map(str::trim).filter(|n| !n.is_empty() && !n.eq_ignore_ascii_case(owner.trim())) {
+        Some(name) if !text.starts_with('[') => format!("[{name}] {text}"),
+        _ => text.to_string(),
+    }
+}
+
+async fn start_generation(app: AppHandle, conversation_id: Option<String>, text: String, source: Option<String>, speaker: Option<String>) -> anyhow::Result<SendResult> {
     let state = app.state::<AppState>();
     let text = text.trim().to_string();
     if text.is_empty() {
         anyhow::bail!("Say something first.");
     }
+    let text = attribute(&text, speaker.as_deref(), &state.settings.read().profile.user_name);
     let storage = state.storage.clone();
     // After a long break Noli starts a fresh conversation (memories carry over),
     // which keeps replies quick and on-topic. An explicitly chosen one is kept.
@@ -216,7 +240,7 @@ async fn start_generation(app: AppHandle, conversation_id: Option<String>, text:
     let memories: Vec<String> = if settings.privacy.memory_enabled { storage.memories()?.into_iter().map(|m| m.content).collect() } else { vec![] };
     let req = ProviderRequest {
         conversation_id: conv.id.clone(),
-        system_prompt: build_system_prompt(&settings, &memories),
+        system_prompt: build_system_prompt(&settings, &memories, speaker.as_deref()),
         history,
         user_message: text.clone(),
         resume_session,
@@ -418,8 +442,8 @@ fn set_model(storage: &crate::storage::Storage, message_id: &str, model: &str) -
 }
 
 #[tauri::command]
-pub async fn chat_send(app: AppHandle, conversation_id: Option<String>, text: String, source: Option<String>) -> CmdResult<SendResult> {
-    start_generation(app, conversation_id, text, source).await.map_err(err)
+pub async fn chat_send(app: AppHandle, conversation_id: Option<String>, text: String, source: Option<String>, speaker: Option<String>) -> CmdResult<SendResult> {
+    start_generation(app, conversation_id, text, source, speaker).await.map_err(err)
 }
 
 #[tauri::command]
@@ -464,7 +488,7 @@ pub async fn chat_regenerate(app: AppHandle, conversation_id: String) -> CmdResu
     }
     // The agent's session already contains the old answer; reseed from our history instead.
     state.storage.set_claude_session(&conversation_id, None).map_err(err)?;
-    start_generation(app.clone(), Some(conversation_id), text, Some("regenerate".into())).await.map_err(err)
+    start_generation(app.clone(), Some(conversation_id), text, Some("regenerate".into()), None).await.map_err(err)
 }
 
 #[tauri::command]
@@ -545,10 +569,30 @@ mod tests {
     #[test]
     fn system_prompt_includes_memories_only_when_enabled() {
         let mut s = Settings::default();
-        let p = build_system_prompt(&s, &["Likes tea".into()]);
+        let p = build_system_prompt(&s, &["Likes tea".into()], None);
         assert!(p.contains("Likes tea") && p.contains("<remember>"));
         s.privacy.memory_enabled = false;
-        let p = build_system_prompt(&s, &["Likes tea".into()]);
+        let p = build_system_prompt(&s, &["Likes tea".into()], None);
         assert!(!p.contains("Likes tea") && !p.contains("<remember>"));
+    }
+
+    #[test]
+    fn system_prompt_knows_who_is_talking() {
+        let mut s = Settings::default();
+        s.profile.user_name = "Ada".into();
+        let p = build_system_prompt(&s, &[], None);
+        assert!(p.contains("called Ada"));
+        let p = build_system_prompt(&s, &[], Some("Bob"));
+        assert!(p.contains("spoken aloud by Bob") && p.contains("Bob is not Ada"));
+        let p = build_system_prompt(&s, &[], Some("ada"));
+        assert!(!p.contains("is not Ada"));
+    }
+
+    #[test]
+    fn other_speakers_are_attributed() {
+        assert_eq!(attribute("hi", Some("Bob"), "Ada"), "[Bob] hi");
+        assert_eq!(attribute("hi", Some("Ada"), "Ada"), "hi");
+        assert_eq!(attribute("hi", None, "Ada"), "hi");
+        assert_eq!(attribute("[Bob] hi", Some("Bob"), "Ada"), "[Bob] hi");
     }
 }

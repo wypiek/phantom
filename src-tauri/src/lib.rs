@@ -30,7 +30,7 @@ use state::AppState;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 static COMPANION_SHOWN_ONCE: AtomicBool = AtomicBool::new(false);
@@ -43,9 +43,11 @@ fn companion_ready(app: tauri::AppHandle, state: tauri::State<'_, AppState>) {
     let first = !COMPANION_SHOWN_ONCE.swap(true, Ordering::SeqCst);
     let launched_by_autostart = std::env::args().any(|a| a == "--autostart");
     let hide_on_launch = first && (s.general.start_minimized || (launched_by_autostart && s.general.start_minimized));
-    if s.general.character_visible && !hide_on_launch {
+    // On first run Noli waits until setup is finished, then arrives (see settings_update).
+    if s.general.character_visible && !hide_on_launch && s.general.onboarding_complete {
         if let Some(w) = app.get_webview_window(windows::COMPANION) {
             let _ = w.show();
+            let _ = app.emit_to(windows::COMPANION, "companion://shown", ());
         }
     }
 }
@@ -203,6 +205,12 @@ pub fn run() {
             voice::voice_set_speaking,
             voice::voice_status,
             voice::voice_transcribe_file,
+            voice::speakers_list,
+            voice::speaker_enroll,
+            voice::speaker_rename,
+            voice::speaker_set_owner,
+            voice::speaker_delete,
+            voice::speakers_clear,
             tts::tts_status,
             tts::tts_list_voices,
             tts::tts_synthesize,

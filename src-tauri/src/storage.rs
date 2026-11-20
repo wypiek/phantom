@@ -49,6 +49,22 @@ pub struct Memory {
     pub conversation_id: Option<String>,
 }
 
+/// A person Noli knows by voice.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Speaker {
+    pub id: String,
+    pub name: String,
+    /// The main user of this computer.
+    pub is_owner: bool,
+    /// Utterances learned from.
+    pub utterances: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+    #[serde(skip)]
+    pub print: String,
+}
+
 pub struct Storage {
     conn: Mutex<Connection>,
 }
@@ -89,6 +105,16 @@ const MIGRATIONS: &[&str] = &[
         content TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         conversation_id TEXT
+    );",
+    // v2: voiceprints of people Noli has met
+    "CREATE TABLE speakers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        is_owner INTEGER NOT NULL DEFAULT 0,
+        print TEXT NOT NULL,
+        utterances INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
     );",
 ];
 
@@ -328,6 +354,83 @@ impl Storage {
         Ok(())
     }
 
+    // ---- speakers -----------------------------------------------------------
+
+    const SPEAKER_SELECT: &'static str = "SELECT id, name, is_owner, utterances, created_at, updated_at, print FROM speakers";
+
+    fn speaker_row(r: &rusqlite::Row) -> rusqlite::Result<Speaker> {
+        Ok(Speaker {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            is_owner: r.get::<_, i64>(2)? != 0,
+            utterances: r.get(3)?,
+            created_at: r.get(4)?,
+            updated_at: r.get(5)?,
+            print: r.get(6)?,
+        })
+    }
+
+    /// Owner first, then most recently heard.
+    pub fn speakers(&self) -> Result<Vec<Speaker>> {
+        let conn = self.conn.lock();
+        let mut st = conn.prepare(&format!("{} ORDER BY is_owner DESC, updated_at DESC", Self::SPEAKER_SELECT))?;
+        let rows = st.query_map([], Self::speaker_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn speaker_by_name(&self, name: &str) -> Result<Option<Speaker>> {
+        let conn = self.conn.lock();
+        Ok(conn.query_row(&format!("{} WHERE lower(name) = lower(?1)", Self::SPEAKER_SELECT), params![name.trim()], Self::speaker_row).optional()?)
+    }
+
+    pub fn add_speaker(&self, name: &str, is_owner: bool, print: &str) -> Result<Speaker> {
+        let now = now_ms();
+        let sp = Speaker { id: new_id(), name: name.trim().to_string(), is_owner, utterances: 1, created_at: now, updated_at: now, print: print.to_string() };
+        let mut conn = self.conn.lock();
+        let tx = conn.transaction()?;
+        if is_owner {
+            tx.execute("UPDATE speakers SET is_owner = 0", [])?;
+        }
+        tx.execute(
+            "INSERT INTO speakers (id, name, is_owner, print, utterances, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
+            params![sp.id, sp.name, is_owner as i64, sp.print, now],
+        )?;
+        tx.commit()?;
+        Ok(sp)
+    }
+
+    /// Stores an updated voiceprint after learning from another utterance.
+    pub fn update_speaker_print(&self, id: &str, print: &str, learned: bool) -> Result<()> {
+        self.conn.lock().execute(
+            "UPDATE speakers SET print = ?2, utterances = utterances + ?3, updated_at = ?4 WHERE id = ?1",
+            params![id, print, learned as i64, now_ms()],
+        )?;
+        Ok(())
+    }
+
+    pub fn rename_speaker(&self, id: &str, name: &str) -> Result<()> {
+        self.conn.lock().execute("UPDATE speakers SET name = ?2 WHERE id = ?1", params![id, name.trim()])?;
+        Ok(())
+    }
+
+    pub fn set_owner(&self, id: &str) -> Result<()> {
+        let mut conn = self.conn.lock();
+        let tx = conn.transaction()?;
+        tx.execute("UPDATE speakers SET is_owner = (id = ?1)", params![id])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn delete_speaker(&self, id: &str) -> Result<()> {
+        self.conn.lock().execute("DELETE FROM speakers WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn delete_all_speakers(&self) -> Result<()> {
+        self.conn.lock().execute("DELETE FROM speakers", [])?;
+        Ok(())
+    }
+
     // ---- retention ----------------------------------------------------------
 
     /// Applies retention windows (0 = keep forever). Returns (conversations, memories) removed.
@@ -424,6 +527,24 @@ mod tests {
         s.delete_conversation(&c.id).unwrap();
         let n: i64 = s.conn.lock().query_row("SELECT COUNT(*) FROM messages", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn speakers_have_one_owner() {
+        let s = Storage::open_in_memory().unwrap();
+        let a = s.add_speaker("Ada", true, "{}").unwrap();
+        let b = s.add_speaker("Bob", true, "{}").unwrap();
+        let list = s.speakers().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.iter().filter(|x| x.is_owner).count(), 1);
+        assert!(list[0].is_owner && list[0].id == b.id);
+        s.set_owner(&a.id).unwrap();
+        assert!(s.speakers().unwrap().iter().find(|x| x.id == a.id).unwrap().is_owner);
+        assert_eq!(s.speaker_by_name("ada").unwrap().unwrap().id, a.id);
+        s.update_speaker_print(&a.id, "{\"x\":1}", true).unwrap();
+        assert_eq!(s.speaker_by_name("ADA").unwrap().unwrap().utterances, 2);
+        s.delete_speaker(&a.id).unwrap();
+        assert_eq!(s.speakers().unwrap().len(), 1);
     }
 
     #[test]

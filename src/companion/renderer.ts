@@ -1,11 +1,16 @@
 import type { Atlas, Rect } from './atlas';
-import type { FrameState } from './machine';
+import { SPAWN, SPAWN_SHORT, type FrameState } from './machine';
 
 const SCREEN = '#140d1e';
 const GLOW = '#E9D8FF';
 const LAVENDER = '#D4B5FF';
 const PURPLE = '#A879FF';
 const RED = '#E84B65';
+const WHITE = '#FFFFFF';
+const DEEP = '#6B3FD1';
+/** Where the star lands: the little star on Noli's chest. */
+const STAR_HOME = { x: 64, y: 68 };
+const STAR_START = { x: 116, y: -4 };
 
 export interface DrawInput {
   state: FrameState;
@@ -68,7 +73,10 @@ export class SpriteRenderer {
     const motion = !d.reducedMotion;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.w, this.h);
-    if (s.alpha <= 0.001) return;
+    if (s.alpha <= 0.001) {
+      if (s.spawn !== undefined) this.drawSpawn(ctx, s.spawn, s.spawnMs ?? SPAWN.total, motion, t);
+      return;
+    }
 
     // ---- body transform -----------------------------------------------------
     let dx = 0;
@@ -156,6 +164,162 @@ export class SpriteRenderer {
     if (s.overlay === 'heart') this.drawIcon(ctx, 'heart', hx + 12, head.y - 24 - (motion ? Math.round((t / 60) % 8) : 0), 0.4);
     if (e.includes('listen')) this.drawMicBars(ctx, hx - 22, head.y + 8, d.mic);
     if (eyesStyle && e.includes('mouth') && d.mouth > 0.12) this.drawSoundMarks(ctx, hx0 - 14, head.y + 4, d.mouth, t);
+    if (s.spawn !== undefined) this.drawSpawn(ctx, s.spawn, s.spawnMs ?? SPAWN.total, motion, t);
+  }
+
+  // ---- arrival: a star falls, flares, bursts, and Noli forms out of it ----------
+
+  private starPos(e: number, fall: number): { x: number; y: number } {
+    if (fall <= 0 || e >= fall) return STAR_HOME;
+    const p = Math.max(0, e / fall);
+    // accelerate like something falling, curve slightly on the way down
+    const k = p * p * (3 - 2 * p) * 0.35 + p * p * 0.65;
+    return {
+      x: STAR_START.x + (STAR_HOME.x - STAR_START.x) * k + Math.sin(p * Math.PI) * 9,
+      y: STAR_START.y + (STAR_HOME.y - STAR_START.y) * k,
+    };
+  }
+
+  private drawSpawn(c: CanvasRenderingContext2D, e: number, total: number, motion: boolean, t: number) {
+    const T = total === SPAWN_SHORT.total ? SPAWN_SHORT : SPAWN;
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+    if (!motion) {
+      // reduced motion: a still star that glows and fades while Noli appears
+      const k = 1 - e / T.total;
+      this.glow(c, STAR_HOME.x, STAR_HOME.y, 26, 0.5 * k);
+      this.drawStar(c, STAR_HOME.x, STAR_HOME.y, 4, 2, k);
+      c.restore();
+      return;
+    }
+    // trail behind the falling star
+    if (e < T.fall + 160) {
+      for (let i = 14; i >= 1; i--) {
+        const te = e - i * 24;
+        if (te < 0 || te > T.fall) continue;
+        const p = this.starPos(te, T.fall);
+        const fade = (1 - i / 15) * (e > T.fall ? 1 - (e - T.fall) / 160 : 1);
+        const jitter = hash(i * 13 + Math.floor(t / 70)) > 0.6 ? 1 : 0;
+        c.globalAlpha = Math.max(0, fade) * 0.9;
+        c.fillStyle = i < 4 ? GLOW : i < 9 ? LAVENDER : PURPLE;
+        const size = i < 5 ? 2 : 1;
+        c.fillRect(Math.round(p.x) + jitter, Math.round(p.y), size, size);
+        // loose glitter
+        if (hash(i * 31 + Math.floor(te / 40)) > 0.72) {
+          c.globalAlpha = fade * 0.7;
+          c.fillStyle = WHITE;
+          c.fillRect(Math.round(p.x + (hash(i * 7) - 0.5) * 8), Math.round(p.y + (hash(i * 11) - 0.5) * 6), 1, 1);
+        }
+      }
+    }
+    const pos = this.starPos(e, T.fall);
+    const twinkle = 0.75 + 0.25 * Math.sin(t * 0.04);
+    if (e < T.fall) {
+      // falling: small and bright
+      this.glow(c, pos.x, pos.y, 10, 0.45);
+      this.drawStar(c, pos.x, pos.y, 3 + (Math.floor(t / 90) % 2), 1, 1);
+    } else if (e < T.burst) {
+      // landed: hovers and flares up, rays growing
+      const p = (e - T.fall) / Math.max(1, T.burst - T.fall);
+      const bob = Math.round(Math.sin(p * Math.PI * 3) * 1.5);
+      this.glow(c, pos.x, pos.y + bob, 12 + p * 22, 0.35 + p * 0.45);
+      this.drawStar(c, pos.x, pos.y + bob, Math.round(4 + p * 8 * twinkle), Math.round(1 + p * 4), 1);
+    } else {
+      const b = e - T.burst;
+      // flash
+      const flash = Math.max(0, 1 - b / 380);
+      if (flash > 0) this.glow(c, STAR_HOME.x, STAR_HOME.y, 30 + b * 0.12, 0.85 * flash);
+      // expanding ring of pixels
+      if (b < 520) {
+        const r = 4 + (b / 520) * 50;
+        c.globalAlpha = (1 - b / 520) * 0.85;
+        c.fillStyle = LAVENDER;
+        const n = Math.round(r * 2.4);
+        for (let i = 0; i < n; i++) {
+          if (hash(i * 3 + 1) < 0.25) continue; // broken, glitchy ring
+          const a = (i / n) * Math.PI * 2;
+          c.fillRect(Math.round(STAR_HOME.x + Math.cos(a) * r), Math.round(STAR_HOME.y + Math.sin(a) * r * 0.9), 1, 1);
+        }
+      }
+      // sparks flying out, slowing down and drifting upward
+      const life = 1150;
+      if (b < life) {
+        for (let i = 0; i < 26; i++) {
+          const ang = hash(i * 17 + 3) * Math.PI * 2;
+          const speed = 26 + hash(i * 29 + 5) * 44; // px/s
+          const tt = b / 1000;
+          const dist = speed * (1 - Math.exp(-tt * 3)) / 3 * 3.2;
+          const x = STAR_HOME.x + Math.cos(ang) * dist;
+          const y = STAR_HOME.y + Math.sin(ang) * dist * 0.9 - tt * tt * 10;
+          const fade = 1 - b / life;
+          const blink = hash(i * 5 + Math.floor(t / 80)) > 0.25 ? 1 : 0.35;
+          c.globalAlpha = fade * blink;
+          c.fillStyle = [WHITE, GLOW, LAVENDER, PURPLE, DEEP][i % 5];
+          const sz = i % 4 === 0 && fade > 0.5 ? 2 : 1;
+          c.fillRect(Math.round(x), Math.round(y), sz, sz);
+        }
+      }
+      // the star shrinks into Noli's chest
+      const shrink = Math.max(0, 1 - b / 650);
+      if (shrink > 0) this.drawStar(c, STAR_HOME.x, STAR_HOME.y, Math.max(1, Math.round(12 * shrink)), Math.round(5 * shrink), Math.min(1, shrink * 1.6));
+      // glitter settling over the forming body
+      if (e > T.reveal) {
+        const r = (e - T.reveal) / Math.max(1, T.total - T.reveal);
+        for (let i = 0; i < 9; i++) {
+          if (hash(i * 41 + Math.floor(t / 110)) < 0.45) continue;
+          const x = 34 + hash(i * 19 + 7) * 62;
+          const y = 26 + hash(i * 23 + 2) * 96;
+          c.globalAlpha = (1 - r) * 0.9;
+          this.drawStar(c, x, y, 1 + (i % 2), 0, (1 - r) * 0.9);
+        }
+      }
+    }
+    c.restore();
+    c.globalAlpha = 1;
+  }
+
+  /** A 4-point pixel star: bright core, rays fading to lavender, optional diagonals. */
+  private drawStar(c: CanvasRenderingContext2D, fx: number, fy: number, arm: number, diag: number, alpha: number) {
+    const x = Math.round(fx);
+    const y = Math.round(fy);
+    c.globalAlpha = alpha;
+    c.fillStyle = GLOW;
+    c.fillRect(x - 1, y - 1, 3, 3);
+    c.fillStyle = WHITE;
+    c.fillRect(x, y, 1, 1);
+    for (let i = 2; i <= arm; i++) {
+      const k = i / (arm + 1);
+      c.globalAlpha = alpha * (1 - k * 0.7);
+      c.fillStyle = k < 0.35 ? WHITE : k < 0.7 ? GLOW : LAVENDER;
+      c.fillRect(x + i, y, 1, 1);
+      c.fillRect(x - i, y, 1, 1);
+      c.fillRect(x, y + i, 1, 1);
+      c.fillRect(x, y - i, 1, 1);
+    }
+    for (let i = 2; i <= diag; i++) {
+      c.globalAlpha = alpha * (1 - i / (diag + 1)) * 0.8;
+      c.fillStyle = LAVENDER;
+      c.fillRect(x + i, y + i, 1, 1);
+      c.fillRect(x - i, y + i, 1, 1);
+      c.fillRect(x + i, y - i, 1, 1);
+      c.fillRect(x - i, y - i, 1, 1);
+    }
+    c.globalAlpha = 1;
+  }
+
+  private glow(c: CanvasRenderingContext2D, x: number, y: number, r: number, strength: number) {
+    if (strength <= 0.01) return;
+    const g = c.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(233,216,255,${0.7 * strength})`);
+    g.addColorStop(0.35, `rgba(168,121,255,${0.35 * strength})`);
+    g.addColorStop(1, 'rgba(107,63,209,0)');
+    const op = c.globalCompositeOperation;
+    c.globalCompositeOperation = 'lighter';
+    c.globalAlpha = 1;
+    c.fillStyle = g;
+    c.fillRect(x - r, y - r, r * 2, r * 2);
+    c.globalCompositeOperation = op;
   }
 
   /** Little pixel arcs beside the head, louder speech = more arcs. */

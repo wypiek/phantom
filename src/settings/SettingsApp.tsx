@@ -34,7 +34,9 @@ export function SettingsApp() {
   useDocumentAppearance(settings);
   const [section, setSection] = useState<Page>(() => {
     // opened straight to a page (e.g. from an error bubble): index.html#provider
+    // first launch opens index.html#onboarding
     const h = window.location.hash.slice(1);
+    if (h === 'onboarding') return 'onboarding';
     return NAV.some((n) => n.id === h) ? (h as NavId) : 'overview';
   });
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -64,13 +66,16 @@ export function SettingsApp() {
 
   useEffect(() => {
     const un = listen<string>('settings://section', ({ payload }) => {
+      if (payload === 'onboarding') return setSection('onboarding');
       const known = NAV.some((n) => n.id === payload);
       setSection(known ? (payload as NavId) : 'overview');
     });
     return () => void un.then((f) => f());
   }, []);
   useEffect(() => {
-    if (settings && !settings.general.onboardingComplete && !window.location.hash) setSection('onboarding');
+    // setup never finished (e.g. the app was quit halfway): pick it up again
+    const h = window.location.hash.slice(1);
+    if (settings && !settings.general.onboardingComplete && (!h || h === 'onboarding')) setSection('onboarding');
     // only on first load
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!settings]);
