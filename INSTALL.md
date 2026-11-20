@@ -10,11 +10,25 @@ and a tray / menu-bar icon gives you Settings and Quit.
 2. Drag **PHANTOM** onto **Applications**.
 3. Open it from Applications or Spotlight.
 
-**"PHANTOM can't be opened because Apple cannot check it for malicious software"**
-appears for builds that aren't signed with an Apple Developer ID. Fix it once:
-right-click PHANTOM in Applications → **Open** → **Open**. If macOS still refuses,
-open **System Settings → Privacy & Security** and click **Open Anyway** next to
-the PHANTOM message.
+**"Apple could not verify PHANTOM is free of malware"** (or "can't be opened
+because Apple cannot check it") appears for builds that aren't signed with an
+Apple Developer ID. Allow it once:
+
+1. Open PHANTOM and click **Done** on the warning.
+2. Open **System Settings → Privacy & Security**, scroll down and click
+   **Open Anyway** next to the PHANTOM message, then confirm with your password.
+
+On macOS 14 and older, right-click PHANTOM in Applications → **Open** → **Open**
+also works.
+
+**"PHANTOM is damaged and can't be opened"** means macOS quarantined a copy whose
+signature it couldn't check (for example, an old build, or one copied in a way
+that dropped part of the app). Download the latest installer again. If the
+message stays, drag PHANTOM to Applications and run this once in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/PHANTOM.app
+```
 
 macOS will also ask for:
 

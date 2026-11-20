@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "sprites": "node scripts/extract-sprites.mjs",
     "tauri": "tauri",
-    "installer:mac": "CI=true tauri build --bundles app,dmg && mkdir -p release/macos && cp src-tauri/target/release/bundle/dmg/*.dmg release/macos/",
+    "installer:mac": "CI=true APPLE_SIGNING_IDENTITY=${APPLE_SIGNING_IDENTITY:--} tauri build --bundles app,dmg && mkdir -p release/macos && cp src-tauri/target/release/bundle/dmg/*.dmg release/macos/",
     "installer:linux": "./scripts/build-linux.sh"
   },
   "dependencies": {
