@@ -66,24 +66,91 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build installers
-        uses: tauri-apps/tauri-action@v0
+      # Tauri starts importing a certificate as soon as APPLE_CERTIFICATE exists,
+      # and GitHub passes secrets that were never added as empty strings, so the
+      # Apple variables are only exported when they hold something. Without a
+      # Developer ID certificate the app is ad-hoc signed ("-"): an unsigned .app
+      # downloaded from the internet is reported by macOS as "damaged".
+      - name: macOS code signing
+        if: runner.os == 'macOS'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional macOS signing/notarization: add these secrets to the repo
-          # and the app opens without the "unidentified developer" warning.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          export_var() {
+            local delim="EOF_$RANDOM$RANDOM"
+            { echo "$1<<$delim"; printf '%s\n' "$2"; echo "$delim"; } >> "$GITHUB_ENV"
+          }
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "No APPLE_CERTIFICATE secret: ad-hoc signing (users confirm the first launch in Privacy & Security)."
+            export_var APPLE_SIGNING_IDENTITY "-"
+            exit 0
+          fi
+          if ! printf '%s' "$APPLE_CERTIFICATE" | tr -d '[:space:]' | base64 --decode > /dev/null 2>&1; then
+            echo "::error::The APPLE_CERTIFICATE secret is not base64. Encode the exported .p12 with: base64 -i certificate.p12 | pbcopy"
+            exit 1
+          fi
+          echo "Signing with the Developer ID certificate from the repository secrets."
+          export_var APPLE_CERTIFICATE "$APPLE_CERTIFICATE"
+          export_var APPLE_CERTIFICATE_PASSWORD "$APPLE_CERTIFICATE_PASSWORD"
+          [ -n "$APPLE_SIGNING_IDENTITY" ] && export_var APPLE_SIGNING_IDENTITY "$APPLE_SIGNING_IDENTITY"
+          if [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+            echo "Notarizing with APPLE_ID."
+            export_var APPLE_ID "$APPLE_ID"
+            export_var APPLE_PASSWORD "$APPLE_PASSWORD"
+            export_var APPLE_TEAM_ID "$APPLE_TEAM_ID"
+          else
+            echo "APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID are not all set: skipping notarization."
+          fi
+
+      - name: Build installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: ${{ matrix.args }}
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('PHANTOM {0}', github.ref_name) || '' }}
           releaseBody: Download the installer for your system below. See INSTALL.md for first-launch steps.
           releaseDraft: true
+
+      # Fails the job instead of shipping a .app that macOS would call "damaged".
+      - name: Verify macOS bundle
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          target="${{ matrix.rust-targets }}"
+          bundle="src-tauri/target/$target/release/bundle"
+          case "$target" in aarch64-*) arch=arm64 ;; *) arch=x86_64 ;; esac
+
+          check_app() {
+            local app="$1"
+            echo "== $app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign --display --verbose=2 "$app" 2>&1 | grep -E '^(Identifier|Format|Signature|Authority|TeamIdentifier|Runtime)'
+            ents=$(codesign --display --entitlements - "$app" 2>/dev/null)
+            for key in com.apple.security.device.audio-input com.apple.security.automation.apple-events; do
+              grep -q "$key" <<< "$ents" || { echo "::error::$app is missing the $key entitlement"; exit 1; }
+            done
+            exe=$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")
+            lipo "$app/Contents/MacOS/$exe" -verify_arch "$arch" \
+              || { echo "::error::$app is not built for $arch"; exit 1; }
+            plutil -lint "$app/Contents/Info.plist"
+          }
+
+          check_app "$bundle/macos/PHANTOM.app"
+
+          dmg=$(ls "$bundle"/dmg/*.dmg)
+          hdiutil verify "$dmg"
+          mnt=$(mktemp -d)
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt" > /dev/null
+          trap 'hdiutil detach "$mnt" -force > /dev/null || true' EXIT
+          check_app "$mnt/PHANTOM.app"
+          [ -L "$mnt/Applications" ] || { echo "::error::DMG has no Applications link"; exit 1; }
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
