@@ -46,6 +46,10 @@ pub fn settings_update(app: AppHandle, state: State<'_, AppState>, settings: Set
     if old.general.character_visible != new.general.character_visible {
         windows::set_companion_visible(&app, new.general.character_visible);
     }
+    // first-run setup just finished: Noli arrives (and introduces itself)
+    if !old.general.onboarding_complete && new.general.onboarding_complete && new.general.character_visible {
+        windows::set_companion_visible(&app, true);
+    }
     if old.general.shortcuts != new.general.shortcuts {
         warnings.extend(windows::register_shortcuts(&app, &new));
     }
@@ -76,6 +80,7 @@ pub fn settings_reset(app: AppHandle, state: State<'_, AppState>) -> CmdResult<S
         let cur = state.settings.read();
         fresh.general.onboarding_complete = cur.general.onboarding_complete;
         fresh.general.position = cur.general.position.clone();
+        fresh.profile = cur.profile.clone();
     }
     settings_update(app, state, fresh).map(|u| u.settings)
 }

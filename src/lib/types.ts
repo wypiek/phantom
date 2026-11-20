@@ -59,6 +59,12 @@ export interface Settings {
     confirmBeforeSend: boolean;
     vadSensitivity: number;
     interruptOnSpeech: boolean;
+    /** beam-search decoding for final transcripts */
+    accurateTranscription: boolean;
+    /** tell people apart by voice, ask unknown speakers who they are */
+    speakerRecognition: boolean;
+    /** 0..1, higher = more readily treats a voice as someone new */
+    speakerStrictness: number;
   };
   tts: {
     enabled: boolean;
@@ -90,6 +96,39 @@ export interface Settings {
     sendScreenshots: boolean;
     maxSteps: number;
   };
+  profile: {
+    /** the main user's name, learned when Noli introduced itself */
+    userName: string;
+    /** Noli has introduced itself */
+    introduced: boolean;
+  };
+}
+
+/** Who said a voice transcript (from local voiceprints). */
+export interface SpeakerInfo {
+  /** known/likely = recognised; unknown = someone new; new = nobody enrolled yet; unclear = too little speech */
+  status: 'known' | 'likely' | 'unknown' | 'new' | 'unclear';
+  id: string | null;
+  name: string | null;
+  isOwner: boolean;
+  /** pass to speakerEnroll to learn this voice */
+  token: string | null;
+  distance: number | null;
+}
+
+export interface Transcript {
+  text: string;
+  auto: boolean;
+  speaker: SpeakerInfo | null;
+}
+
+export interface Speaker {
+  id: string;
+  name: string;
+  isOwner: boolean;
+  utterances: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface Conversation {

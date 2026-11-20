@@ -90,6 +90,20 @@ html.companion-root #root {
 .bubble-remark {
   border-style: dashed;
 }
+.bubble-ask {
+  border-color: #a879ff;
+}
+.bubble-ask::after {
+  border-color: #a879ff;
+}
+.bubble-ask .bubble-text {
+  -webkit-line-clamp: 5;
+}
+.bubble-hint {
+  margin-top: 4px;
+  font-size: 10px;
+  color: #a58fcb;
+}
 .bubble-actions {
   display: flex;
   gap: 6px;

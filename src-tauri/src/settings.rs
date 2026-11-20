@@ -29,6 +29,17 @@ pub struct Settings {
     pub appearance: Appearance,
     pub privacy: Privacy,
     pub computer: ComputerControl,
+    pub profile: Profile,
+}
+
+/// Who Noli is talking to.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Profile {
+    /// The main user's name, learned when Noli introduced itself.
+    pub user_name: String,
+    /// Noli has introduced itself (and asked for the user's name).
+    pub introduced: bool,
 }
 
 impl Default for Settings {
@@ -42,6 +53,7 @@ impl Default for Settings {
             appearance: Appearance::default(),
             privacy: Privacy::default(),
             computer: ComputerControl::default(),
+            profile: Profile::default(),
         }
     }
 }
@@ -259,6 +271,12 @@ pub struct Voice {
     /// 0..1 — higher = triggers on quieter speech (continuous mode).
     pub vad_sensitivity: f64,
     pub interrupt_on_speech: bool,
+    /// Beam-search decoding for final transcripts (more accurate, slower).
+    pub accurate_transcription: bool,
+    /// Tell people apart by their voice and ask unknown speakers who they are.
+    pub speaker_recognition: bool,
+    /// 0..1 — higher = more readily treats a voice as someone new.
+    pub speaker_strictness: f64,
 }
 
 impl Default for Voice {
@@ -274,6 +292,9 @@ impl Default for Voice {
             confirm_before_send: false,
             vad_sensitivity: 0.5,
             interrupt_on_speech: true,
+            accurate_transcription: true,
+            speaker_recognition: true,
+            speaker_strictness: 0.5,
         }
     }
 }
@@ -417,6 +438,8 @@ impl Settings {
             self.provider.groq.base_url = GroqSettings::default().base_url;
         }
         self.voice.vad_sensitivity = self.voice.vad_sensitivity.clamp(0.0, 1.0);
+        self.voice.speaker_strictness = if self.voice.speaker_strictness.is_finite() { self.voice.speaker_strictness.clamp(0.0, 1.0) } else { 0.5 };
+        self.profile.user_name = self.profile.user_name.trim().chars().take(60).collect();
         self.voice.input_gain = if self.voice.input_gain.is_finite() { self.voice.input_gain.clamp(0.25, 4.0) } else { 1.0 };
         self.appearance.interface_scale = self.appearance.interface_scale.clamp(0.75, 1.6);
         if self.personality.system_prompt.trim().is_empty() {

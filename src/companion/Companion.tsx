@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event';
 import { Menu, MenuItem, PredefinedMenuItem, CheckMenuItem } from '@tauri-apps/api/menu';
 import { currentMonitor, getCurrentWindow, LogicalPosition } from '@tauri-apps/api/window';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -9,6 +10,7 @@ import type { PermissionRequest } from '../lib/types';
 import { api } from '../lib/ipc';
 import { settingsStore, useSettings } from '../lib/useSettings';
 import { ttsPlayer } from '../audio/ttsPlayer';
+import { starChime } from '../lib/sounds';
 import { loadAtlas, type Atlas } from './atlas';
 import { Brain } from './brain';
 import { buildClips } from './clips';
@@ -38,6 +40,19 @@ export function Companion() {
       sleepAfterMs: SLEEP_AFTER_MS,
     }, performance.now());
     const renderer = new SpriteRenderer(canvasRef.current, atlas);
+    // every launch (and every time it's summoned back) Noli arrives on a falling star
+    const arrive = () => {
+      machine.spawn(performance.now(), !!settingsStore.current?.appearance.reducedMotion);
+      starChime();
+    };
+    machine.spawn(performance.now(), !!s?.appearance.reducedMotion);
+    let spawnedAt = performance.now();
+    const unShown = listen('companion://shown', () => {
+      // the launch spawn already started a moment ago: don't restart it
+      if (machine.spawning && performance.now() - spawnedAt < 600) return starChime();
+      spawnedAt = performance.now();
+      arrive();
+    });
     const brain = new Brain(machine);
     brainRef.current = brain;
     const unUi = brain.onUi(() => force((n) => n + 1));
@@ -116,6 +131,7 @@ export function Companion() {
     return () => {
       alive = false;
       clearTimeout(timer);
+      void unShown.then((f) => f());
       unUi();
       brain.dispose();
     };
@@ -234,6 +250,7 @@ export function Companion() {
           bubble && (
             <div className={`bubble bubble-${bubble.kind}`} role="status" aria-live="polite">
               <div className="bubble-text">{bubble.text}</div>
+              {bubble.hint && <div className="bubble-hint">{bubble.hint}</div>}
               {bubble.kind === 'error' && bubble.fix && (
                 <div className="bubble-actions">
                   <button onClick={() => brain?.openFix(bubble.fix!)}>Open settings</button>

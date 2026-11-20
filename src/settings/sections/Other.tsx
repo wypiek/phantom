@@ -1,7 +1,7 @@
 import { emitTo } from '@tauri-apps/api/event';
 import { listen } from '@tauri-apps/api/event';
 import { useEffect, useState } from 'react';
-import { Field, Section, Slider, Toggle, useAsync } from '../../components/ui';
+import { CommitInput, Field, Section, Slider, Toggle, useAsync } from '../../components/ui';
 import { api, errorText } from '../../lib/ipc';
 import type { Settings } from '../../lib/types';
 import { MOODS } from '../../companion/machine';
@@ -156,6 +156,38 @@ export function PrivacySection({ s, update }: Props) {
         </Field>
         <MemoryManager />
       </Section>
+      <Section title="People" description="Who Noli knows. Voiceprints are short statistical summaries of how someone sounds, never recordings, and stay on this computer.">
+        <Field label="Your name" hint="What Noli calls you. Noli asks for it the first time you meet.">
+          <CommitInput
+            value={s.profile.userName}
+            placeholder="Not told yet"
+            onCommit={(v) =>
+              void update((d) => {
+                d.profile.userName = v.trim();
+                d.profile.introduced = true;
+              })
+            }
+          />
+        </Field>
+        <Field label="Recognise voices" hint="Noli tells people apart by voice and asks someone new who they are. Needs long-term memory." inline>
+          <Toggle checked={s.voice.speakerRecognition} onChange={(v) => void update((d) => void (d.voice.speakerRecognition = v))} />
+        </Field>
+        <KnownVoices />
+        {!s.profile.introduced && <div className="faint small-text">Noli will introduce itself the next time it appears.</div>}
+        <div className="row" style={{ marginTop: 8 }}>
+          <button
+            className="btn small"
+            onClick={() =>
+              void update((d) => {
+                d.profile.introduced = false;
+              }).then(() => api.restart())
+            }
+          >
+            Meet Noli again
+          </button>
+          <span className="faint small-text">Restarts PHANTOM; Noli introduces itself and asks your name again.</span>
+        </div>
+      </Section>
       <Section title="Local data">
         <p className="dim section-note">Everything PHANTOM stores (settings, conversations, memories, speech models) stays on this computer. API keys live in the system keychain.</p>
         <div className="row">
@@ -166,6 +198,75 @@ export function PrivacySection({ s, update }: Props) {
         </div>
       </Section>
     </>
+  );
+}
+
+function KnownVoices() {
+  const list = useAsync(() => api.speakers(), []);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  useEffect(() => {
+    const un = listen('speakers://changed', () => list.reload());
+    return () => void un.then((f) => f());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div className="memories">
+      {list.data?.length === 0 && <div className="faint">No voices learned yet. Noli learns yours when you talk to it.</div>}
+      {list.data?.map((sp) => (
+        <div key={sp.id} className="memory">
+          {editing === sp.id ? (
+            <input
+              className="input"
+              autoFocus
+              defaultValue={sp.name}
+              onBlur={(e) => {
+                setEditing(null);
+                const v = e.target.value.trim();
+                if (v && v !== sp.name) void api.speakerRename(sp.id, v).then(list.reload);
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+            />
+          ) : (
+            <div className="grow selectable" onDoubleClick={() => setEditing(sp.id)}>
+              {sp.name} {sp.isOwner && <span className="label-pill ok">you</span>}
+              <div className="faint small-text">
+                learned from {sp.utterances} {sp.utterances === 1 ? 'sentence' : 'sentences'} · last heard {relativeTime(sp.updatedAt)}
+              </div>
+            </div>
+          )}
+          {!sp.isOwner && (
+            <button className="btn ghost small" title="This is my voice" onClick={() => void api.speakerSetOwner(sp.id).then(list.reload)}>
+              This is me
+            </button>
+          )}
+          <button className="btn ghost small" onClick={() => setEditing(sp.id)}>
+            Rename
+          </button>
+          <button className="btn ghost small" onClick={() => void api.speakerDelete(sp.id).then(list.reload)}>
+            Forget
+          </button>
+        </div>
+      ))}
+      {!!list.data?.length &&
+        (confirm ? (
+          <div className="row" style={{ marginTop: 8 }}>
+            <span className="dim">Noli will need to learn every voice again.</span>
+            <button className="btn danger small" onClick={() => void api.speakersClear().then(() => (setConfirm(false), list.reload()))}>
+              Forget all voices
+            </button>
+            <button className="btn ghost small" onClick={() => setConfirm(false)}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="btn danger small" onClick={() => setConfirm(true)}>
+              Forget all voices…
+            </button>
+          </div>
+        ))}
+    </div>
   );
 }
 

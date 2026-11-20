@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildClips } from './clips';
 import type { AtlasManifest } from './atlas';
-import { CompanionMachine, MOODS } from './machine';
+import { CompanionMachine, MOODS, SPAWN } from './machine';
 import manifest from '../../public/sprites/phantom-atlas.json';
 
 const clips = buildClips(manifest as unknown as AtlasManifest);
@@ -81,5 +81,33 @@ describe('CompanionMachine', () => {
     expect(f.prev).not.toBeNull();
     expect(f.prev!.alpha).toBeGreaterThan(0);
     expect(m.tick(400).prev).toBeNull();
+  });
+
+  it('spawns from a star: hidden, then forming, then idle', () => {
+    const m = make();
+    m.spawn(1000);
+    expect(m.spawning).toBe(true);
+    const early = m.tick(1000 + 200);
+    expect(early.clip).toBe('spawn');
+    expect(early.alpha).toBe(0);
+    expect(early.spawn).toBe(200);
+    expect(m.isAnimatedFast()).toBe(true);
+    const forming = m.tick(1000 + SPAWN.reveal + 600);
+    expect(forming.alpha).toBeGreaterThan(0);
+    expect(forming.alpha).toBeLessThanOrEqual(1);
+    // a reply starting mid-spawn waits for Noli to finish arriving
+    m.set('speaking', 1000 + SPAWN.reveal + 700);
+    expect(m.tick(1000 + SPAWN.reveal + 800).clip).toBe('spawn');
+    const after = m.tick(1000 + SPAWN.total + 10);
+    expect(m.spawning).toBe(false);
+    expect(after.spawn).toBeUndefined();
+    expect(after.alpha).toBe(1);
+    expect(after.mood).toBe('speaking');
+  });
+
+  it('short spawn for reduced motion', () => {
+    const m = make();
+    m.spawn(0, true);
+    expect(m.tick(950).spawn).toBeUndefined();
   });
 });

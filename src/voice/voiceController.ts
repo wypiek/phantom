@@ -1,9 +1,9 @@
 import { api, errorText } from '../lib/ipc';
-import type { ListenMode, Settings } from '../lib/types';
+import type { ListenMode, Settings, SpeakerInfo } from '../lib/types';
 
 export interface VoiceCallbacks {
   /** Called when a transcript should be sent (or confirmed). */
-  onTranscript: (text: string) => void;
+  onTranscript: (text: string, speaker: SpeakerInfo | null) => void;
   onEmpty: () => void;
   onError: (msg: string) => void;
   /** User started talking → stop PHANTOM's speech. */
@@ -60,7 +60,7 @@ export class VoiceController {
       const res = await api.voiceStop();
       this.listening = false;
       this.mode = null;
-      if (res.text.trim()) this.cb.onTranscript(res.text.trim());
+      if (res.text.trim()) this.cb.onTranscript(res.text.trim(), res.speaker ?? null);
       else this.cb.onEmpty();
     } catch (e) {
       this.listening = false;
@@ -121,9 +121,9 @@ export class VoiceController {
   }
 
   /** Continuous-mode utterance finished (event from backend). */
-  handleAutoTranscript(text: string) {
+  handleAutoTranscript(text: string, speaker: SpeakerInfo | null = null) {
     if (this.mode !== 'continuous') return;
-    if (text.trim()) this.cb.onTranscript(text.trim());
+    if (text.trim()) this.cb.onTranscript(text.trim(), speaker);
   }
 
   /** Turns continuous listening on/off without changing the saved mode. */

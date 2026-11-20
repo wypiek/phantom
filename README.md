@@ -4,7 +4,10 @@ A very mysterious AI desktop companion.
 PHANTOM puts **Noli**, a small pixel creature, on your desktop. He idles, wanders,
 dozes off when ignored, and talks back.
 
-- **Talk** by typing in his chatbox, or hold **Left Control** to speak. Speech is recognised locally with Whisper.
+- **Arrives on a falling star** every time PHANTOM starts (or is summoned back), and walks you through a short setup the first time.
+- **Introduces itself** on first run, asks your name and remembers it.
+- **Talk** by typing in his chatbox, or hold **Left Control** to speak. Speech is recognised locally with Whisper (cleaned-up audio, beam-search decoding, names in its vocabulary).
+- **Knows voices**: Noli learns your voice locally. When someone it doesn't recognise speaks, it asks who they are and remembers them (manage voices in Settings → Privacy & Memory).
 - **Hear** replies in a distorted horror voice, spoken sentence by sentence while the answer streams in.
 - **Choose a brain**: Claude Code (reuses your login), OpenRouter or Groq. API keys live in your system keychain.
 - **Computer help** (opt-in): he can look at your screen, open apps and use the mouse and keyboard, asking first by default.

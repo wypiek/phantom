@@ -139,7 +139,12 @@ pub fn set_expanded(app: &AppHandle, expanded: bool) {
 pub fn set_companion_visible(app: &AppHandle, visible: bool) {
     if let Some(w) = app.get_webview_window(COMPANION) {
         if visible {
+            let was_visible = w.is_visible().unwrap_or(false);
             let _ = w.show();
+            if !was_visible {
+                // Noli arrives on a falling star whenever it appears
+                let _ = app.emit_to(COMPANION, "companion://shown", ());
+            }
         } else {
             let _ = w.hide();
         }
